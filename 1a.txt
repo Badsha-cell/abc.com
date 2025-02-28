@@ -1,0 +1,100 @@
+import java.util.Stack;
+import java.util.Scanner;
+
+public class Main {
+
+    // Function to determine operator precedence
+    private static int precedence(char op) {
+        switch (op) {
+            case '+': case '-': return 1;
+            case '*': case '/': return 2;
+            default: return 0;
+        }
+    }
+
+    // Function to apply an operator to two operands
+    private static int applyOperation(int a, int b, char op) {
+        switch (op) {
+            case '+': return a + b;
+            case '-': return a - b;
+            case '*': return a * b;
+            case '/': return a / b; // Assumes b ≠ 0
+            default: throw new IllegalArgumentException("Invalid operator: " + op);
+        }
+    }
+
+    // Function to evaluate an expression
+    public static int evaluate(String expression) {
+        Stack<Integer> values = new Stack<>();
+        Stack<Character> operators = new Stack<>();
+
+        for (int i = 0; i < expression.length(); i++) {
+            char c = expression.charAt(i);
+
+            // If character is a space, skip it
+            if (c == ' ') continue;
+
+            // If character is a number, extract full number
+            if (Character.isDigit(c)) {
+                int num = 0;
+                while (i < expression.length() && Character.isDigit(expression.charAt(i))) {
+                    num = num * 10 + (expression.charAt(i) - '0');
+                    i++;
+                }
+                i--; // Adjust for loop increment
+                values.push(num);
+            }
+            // If character is an opening bracket, push it
+            else if (c == '(') {
+                operators.push(c);
+            }
+            // If character is a closing bracket, solve entire bracket
+            else if (c == ')') {
+                while (!operators.isEmpty() && operators.peek() != '(') {
+                    int b = values.pop();
+                    int a = values.pop();
+                    char op = operators.pop();
+                    values.push(applyOperation(a, b, op));
+                }
+                operators.pop(); // Remove '('
+            }
+            // If character is an operator
+            else {
+                while (!operators.isEmpty() && precedence(operators.peek()) >= precedence(c)) {
+                    int b = values.pop();
+                    int a = values.pop();
+                    char op = operators.pop();
+                    values.push(applyOperation(a, b, op));
+                }
+                operators.push(c);
+            }
+        }
+
+        // Process remaining operations
+        while (!operators.isEmpty()) {
+            int b = values.pop();
+            int a = values.pop();
+            char op = operators.pop();
+            values.push(applyOperation(a, b, op));
+        }
+
+        return values.pop(); // Final result
+    }
+
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        // User input for expression
+        System.out.print("Enter an expression (e.g., (2+5)*5): ");
+        String expression = scanner.nextLine();
+
+        try {
+            int result = evaluate(expression);
+            System.out.println("Result: " + result);
+        } catch (Exception e) {
+            System.out.println("Error: " + e.getMessage());
+        }
+
+        scanner.close();
+    }
+}
