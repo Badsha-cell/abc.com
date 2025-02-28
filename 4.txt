@@ -1,0 +1,325 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+#define MAX_PROD 50
+#define MAX_LEN 50
+#define MAX_NON_TERMINALS 26
+#define MAX_TERMINALS 26
+
+typedef struct {
+    char lhs;
+    char rhs[MAX_LEN];
+} Production;
+
+Production productions[MAX_PROD];
+int num_productions = 0;
+char first[MAX_NON_TERMINALS][MAX_TERMINALS];
+char follow[MAX_NON_TERMINALS][MAX_TERMINALS];
+char parsing_table[MAX_NON_TERMINALS][MAX_TERMINALS][MAX_LEN];
+char terminals[MAX_TERMINALS];
+char non_terminals[MAX_NON_TERMINALS];
+int num_terminals = 0;
+int num_non_terminals = 0;
+
+int is_non_terminal(char c) {
+    return (c >= 'A' && c <= 'Z');
+}
+
+int is_terminal(char c) {
+    return !is_non_terminal(c) && c != 'e' && c != '\0';
+}
+
+void add_to_set(char set[], char terminal) {
+    int i;
+    for (i = 0; set[i] != '\0'; i++) {
+        if (set[i] == terminal) return;
+    }
+    set[i] = terminal;
+    set[i + 1] = '\0';
+}
+
+void compute_first(char symbol, char result[]) {
+    if (!is_non_terminal(symbol)) {
+        if (symbol != 'e') {
+            add_to_set(result, symbol);
+        }
+        return;
+    }
+
+    for (int i = 0; i < num_productions; i++) {
+        if (productions[i].lhs == symbol) {
+            if (productions[i].rhs[0] == 'e') {
+                add_to_set(result, 'e');
+            } else {
+                int j = 0;
+                char curr_first[MAX_TERMINALS] = "";
+                int has_epsilon = 1;
+
+                while (productions[i].rhs[j] != '\0' && has_epsilon) {
+                    has_epsilon = 0;
+                    memset(curr_first, 0, sizeof(curr_first));
+                    compute_first(productions[i].rhs[j], curr_first);
+                   
+                    for (int k = 0; curr_first[k] != '\0'; k++) {
+                        if (curr_first[k] == 'e') {
+                            has_epsilon = 1;
+                        } else {
+                            add_to_set(result, curr_first[k]);
+                        }
+                    }
+                    j++;
+                }
+
+                if (has_epsilon && productions[i].rhs[j] == '\0') {
+                    add_to_set(result, 'e');
+                }
+            }
+        }
+    }
+}
+
+void compute_follow(char symbol) {
+    if (symbol == productions[0].lhs) {
+        add_to_set(follow[symbol - 'A'], '$');
+    }
+
+    for (int i = 0; i < num_productions; i++) {
+        for (int j = 0; productions[i].rhs[j] != '\0'; j++) {
+            if (productions[i].rhs[j] == symbol) {
+                if (productions[i].rhs[j + 1] != '\0') {
+                    int k = j + 1;
+                    while (productions[i].rhs[k] != '\0') {
+                        char next_first[MAX_TERMINALS] = "";
+                        compute_first(productions[i].rhs[k], next_first);
+                       
+                        for (int m = 0; next_first[m] != '\0'; m++) {
+                            if (next_first[m] != 'e') {
+                                add_to_set(follow[symbol - 'A'], next_first[m]);
+                            }
+                        }
+                       
+                        if (!strchr(next_first, 'e')) {
+                            break;
+                        }
+                        k++;
+                    }
+                   
+                    if (productions[i].rhs[k] == '\0') {
+                        for (int m = 0; follow[productions[i].lhs - 'A'][m] != '\0'; m++) {
+                            add_to_set(follow[symbol - 'A'], follow[productions[i].lhs - 'A'][m]);
+                        }
+                    }
+                } else {
+                    for (int m = 0; follow[productions[i].lhs - 'A'][m] != '\0'; m++) {
+                        add_to_set(follow[symbol - 'A'], follow[productions[i].lhs - 'A'][m]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void compute_all_follow_sets() {
+    add_to_set(follow[productions[0].lhs - 'A'], '$');
+   
+    int changes;
+    do {
+        changes = 0;
+        char old_follow[MAX_NON_TERMINALS][MAX_TERMINALS];
+        memcpy(old_follow, follow, sizeof(follow));
+       
+        for (int i = 0; i < num_non_terminals; i++) {
+            compute_follow(non_terminals[i]);
+        }
+       
+        for (int i = 0; i < MAX_NON_TERMINALS; i++) {
+            if (strcmp(old_follow[i], follow[i]) != 0) {
+                changes = 1;
+                break;
+            }
+        }
+    } while (changes);
+}
+
+void collect_symbols() {
+    for (int i = 0; i < num_productions; i++) {
+        if (!strchr(non_terminals, productions[i].lhs)) {
+            non_terminals[num_non_terminals++] = productions[i].lhs;
+        }
+
+        for (int j = 0; productions[i].rhs[j] != '\0'; j++) {
+            char symbol = productions[i].rhs[j];
+            if (is_terminal(symbol)) {
+                if (!strchr(terminals, symbol)) {
+                    terminals[num_terminals++] = symbol;
+                }
+            } else if (is_non_terminal(symbol)) {
+                if (!strchr(non_terminals, symbol)) {
+                    non_terminals[num_non_terminals++] = symbol;
+                }
+            }
+        }
+    }
+   
+    if (!strchr(terminals, '$')) {
+        terminals[num_terminals++] = '$';
+    }
+   
+    // Sort terminals and non-terminals
+    for (int i = 0; i < num_terminals - 1; i++) {
+        for (int j = 0; j < num_terminals - i - 1; j++) {
+            if (terminals[j] > terminals[j + 1]) {
+                char temp = terminals[j];
+                terminals[j] = terminals[j + 1];
+                terminals[j + 1] = temp;
+            }
+        }
+    }
+   
+    for (int i = 0; i < num_non_terminals - 1; i++) {
+        for (int j = 0; j < num_non_terminals - i - 1; j++) {
+            if (non_terminals[j] > non_terminals[j + 1]) {
+                char temp = non_terminals[j];
+                non_terminals[j] = non_terminals[j + 1];
+                non_terminals[j + 1] = temp;
+            }
+        }
+    }
+}
+
+void create_parsing_table() {
+    for (int i = 0; i < num_productions; i++) {
+        char nt = productions[i].lhs;
+        char first_set[MAX_TERMINALS] = "";
+        int j = 0;
+        int has_epsilon = 1;
+
+        while (productions[i].rhs[j] != '\0' && has_epsilon) {
+            has_epsilon = 0;
+            char curr_first[MAX_TERMINALS] = "";
+            compute_first(productions[i].rhs[j], curr_first);
+
+            for (int k = 0; curr_first[k] != '\0'; k++) {
+                if (curr_first[k] == 'e') {
+                    has_epsilon = 1;
+                } else {
+                    add_to_set(first_set, curr_first[k]);
+                }
+            }
+            j++;
+        }
+
+        for (int j = 0; j < num_terminals; j++) {
+            if (strchr(first_set, terminals[j])) {
+                strcpy(parsing_table[nt - 'A'][terminals[j]], productions[i].rhs);
+            }
+        }
+
+        if (has_epsilon || productions[i].rhs[0] == 'e') {
+            char follow_set[MAX_TERMINALS];
+            strcpy(follow_set, follow[nt - 'A']);
+            for (int j = 0; j < num_terminals; j++) {
+                if (strchr(follow_set, terminals[j])) {
+                    if (productions[i].rhs[0] == 'e') {
+                        strcpy(parsing_table[nt - 'A'][terminals[j]], "e");
+                    } else {
+                        strcpy(parsing_table[nt - 'A'][terminals[j]], productions[i].rhs);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void print_sets_and_table() {
+    printf("\nTerminals: ");
+    for (int i = 0; i < num_terminals; i++) {
+        printf("%c ", terminals[i]);
+    }
+
+    printf("\nNon-terminals: ");
+    for (int i = 0; i < num_non_terminals; i++) {
+        printf("%c ", non_terminals[i]);
+    }
+
+    printf("\n\nFIRST sets:\n");
+    for (int i = 0; i < num_non_terminals; i++) {
+        char nt = non_terminals[i];
+        printf("FIRST(%c) = { ", nt);
+        for (int j = 0; first[nt - 'A'][j] != '\0'; j++) {
+            printf("%c ", first[nt - 'A'][j]);
+        }
+        printf("}\n");
+    }
+
+    printf("\nFOLLOW sets:\n");
+    for (int i = 0; i < num_non_terminals; i++) {
+        char nt = non_terminals[i];
+        printf("FOLLOW(%c) = { ", nt);
+        for (int j = 0; follow[nt - 'A'][j] != '\0'; j++) {
+            printf("%c ", follow[nt - 'A'][j]);
+        }
+        printf("}\n");
+    }
+
+    printf("\nPredictive Parsing Table:\n");
+    printf("%-10s", "NT/T");
+    for (int i = 0; i < num_terminals; i++) {
+        printf("%-10c", terminals[i]);
+    }
+    printf("\n");
+
+    for (int i = 0; i < num_non_terminals; i++) {
+        char nt = non_terminals[i];
+        printf("%-10c", nt);
+        for (int j = 0; j < num_terminals; j++) {
+            if (parsing_table[nt - 'A'][terminals[j]][0] != '\0') {
+                printf("%-10s", parsing_table[nt - 'A'][terminals[j]]);
+            } else {
+                printf("%-10s", "-");
+            }
+        }
+        printf("\n");
+    }
+}
+
+int main() {
+    printf("Enter number of productions: ");
+    scanf("%d", &num_productions);
+    getchar();
+
+    printf("Enter productions (format: A->abc or A->e for epsilon):\n");
+    for (int i = 0; i < num_productions; i++) {
+        char input[MAX_LEN];
+        fgets(input, MAX_LEN, stdin);
+       
+        productions[i].lhs = input[0];
+        strcpy(productions[i].rhs, input + 3);
+       
+        int len = strlen(productions[i].rhs);
+        if (productions[i].rhs[len - 1] == '\n') {
+            productions[i].rhs[len - 1] = '\0';
+        }
+    }
+
+    memset(first, 0, sizeof(first));
+    memset(follow, 0, sizeof(follow));
+    memset(parsing_table, 0, sizeof(parsing_table));
+    memset(terminals, 0, sizeof(terminals));
+    memset(non_terminals, 0, sizeof(non_terminals));
+
+    collect_symbols();
+
+    for (int i = 0; i < num_non_terminals; i++) {
+        char nt = non_terminals[i];
+        compute_first(nt, first[nt - 'A']);
+    }
+
+    compute_all_follow_sets();
+    create_parsing_table();
+    print_sets_and_table();
+
+    return 0;
+}
