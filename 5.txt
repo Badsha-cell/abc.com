@@ -1,0 +1,110 @@
+import java.util.*;
+
+public class Main {
+    static HashMap<Character, List<String>> grammar = new HashMap<>();
+    static HashMap<Character, Set<Character>> firstSets = new HashMap<>();
+    static HashMap<Character, Set<Character>> followSets = new HashMap<>();
+    static char startSymbol;
+
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        // Input grammar
+        System.out.print("Enter the number of productions: ");
+        int numProductions = sc.nextInt();
+        sc.nextLine();
+
+        System.out.println("Enter productions (format: A->α|β, where A is a non-terminal):");
+        for (int i = 0; i < numProductions; i++) {
+            String production = sc.nextLine();
+            char nonTerminal = production.charAt(0);
+            String rhs = production.substring(3); // Ignore "A->"
+            List<String> rules = Arrays.asList(rhs.split("\\|")); // Split by '|'
+
+            grammar.put(nonTerminal, rules);
+            firstSets.put(nonTerminal, new HashSet<>());
+            followSets.put(nonTerminal, new HashSet<>());
+        }
+
+        // Input start symbol
+        System.out.print("Enter start symbol: ");
+        startSymbol = sc.next().charAt(0);
+
+        // Compute FIRST sets
+        for (char nonTerminal : grammar.keySet()) {
+            computeFirst(nonTerminal);
+        }
+
+        // Initialize FOLLOW sets
+        followSets.get(startSymbol).add('$'); // Add '$' to FOLLOW of start symbol
+
+        // Compute FOLLOW sets
+        for (char nonTerminal : grammar.keySet()) {
+            computeFollow(nonTerminal);
+        }
+
+        // Print FIRST sets
+        System.out.println("\nFIRST Sets:");
+        for (char nonTerminal : firstSets.keySet()) {
+            System.out.println("FIRST(" + nonTerminal + ") = " + firstSets.get(nonTerminal));
+        }
+
+        // Print FOLLOW sets
+        System.out.println("\nFOLLOW Sets:");
+        for (char nonTerminal : followSets.keySet()) {
+            System.out.println("FOLLOW(" + nonTerminal + ") = " + followSets.get(nonTerminal));
+        }
+    }
+
+    // Compute FIRST set for a non-terminal
+    static Set<Character> computeFirst(char nonTerminal) {
+        if (!firstSets.get(nonTerminal).isEmpty()) {
+            return firstSets.get(nonTerminal);
+        }
+
+        for (String rule : grammar.get(nonTerminal)) {
+            for (int i = 0; i < rule.length(); i++) {
+                char symbol = rule.charAt(i);
+
+                if (Character.isLowerCase(symbol) || !grammar.containsKey(symbol)) {
+                    firstSets.get(nonTerminal).add(symbol); // Terminal or undefined symbol
+                    break;
+                }
+
+                Set<Character> firstOfSymbol = computeFirst(symbol);
+                firstSets.get(nonTerminal).addAll(firstOfSymbol);
+
+                if (!firstOfSymbol.contains('ε')) {
+                    break;
+                }
+            }
+        }
+        return firstSets.get(nonTerminal);
+    }
+
+    // Compute FOLLOW set for a non-terminal
+    static void computeFollow(char nonTerminal) {
+        for (char key : grammar.keySet()) {
+            for (String rule : grammar.get(key)) {
+                for (int i = 0; i < rule.length(); i++) {
+                    if (rule.charAt(i) == nonTerminal) {
+                        if (i + 1 < rule.length()) {
+                            char nextSymbol = rule.charAt(i + 1);
+
+                            if (Character.isLowerCase(nextSymbol) || !grammar.containsKey(nextSymbol)) {
+                                followSets.get(nonTerminal).add(nextSymbol); // Terminal
+                            } else {
+                                followSets.get(nonTerminal).addAll(firstSets.get(nextSymbol));
+                                if (firstSets.get(nextSymbol).contains('ε')) {
+                                    followSets.get(nonTerminal).addAll(followSets.get(key));
+                                }
+                            }
+                        } else {
+                            followSets.get(nonTerminal).addAll(followSets.get(key)); // End of rule
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
